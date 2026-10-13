@@ -20,6 +20,7 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"].strip()
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"].strip()
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 TRIGGER = os.getenv("TRIGGER", "@hotrohit88bot")
+SHOW_ERROR = os.getenv("SHOW_ERROR", "1") == "1"  # tạm bật để xem lỗi ngay trong chat
 
 SYSTEM_PROMPT = (
     "Bạn là trợ lý AI thân thiện trong nhóm Telegram, tên là Hỗ Trợ. "
@@ -247,6 +248,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         log.error("Lỗi khi gọi AI: %s: %s", type(e).__name__, e, exc_info=True)
         answer = "Xin lỗi, hiện mình đang gặp lỗi. Bạn thử lại sau nhé. 😭"
+        if SHOW_ERROR:
+            # Chế độ debug: hiện chi tiết lỗi ngay trong chat (tắt bằng SHOW_ERROR=0)
+            answer += f"\n\n[DEBUG] {type(e).__name__}: {str(e)[:500]}"
 
     mention = f'<a href="tg://user?id={user.id}">{html.escape(user.full_name)}</a>'
     header = f"{cemoji('🌟')} {mention} {cemoji('🥰')}\n\n"
