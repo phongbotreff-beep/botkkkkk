@@ -16,22 +16,48 @@ log = logging.getLogger("hotro-bot")
 
 # ====== CẤU HÌNH ======
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"].strip()
-AI_API_KEY = os.getenv(
-    "AI_API_KEY", "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"
-).strip()
+# Đặt key mới trong biến môi trường AI_API_KEY (không ghi cứng trong code)
+AI_API_KEY = os.environ["AI_API_KEY"].strip()
 AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.groq.com/openai/v1").strip()
 MODEL = os.getenv("AI_MODEL", "llama-3.3-70b-versatile").strip()
 TRIGGER = os.getenv("TRIGGER", "@hotrohit88bot")
 SHOW_ERROR = os.getenv("SHOW_ERROR", "1") == "1"  # tạm bật để xem lỗi ngay trong chat
 
+HIT88_INFO = """
+THÔNG TIN HIT88 (dùng để trả lời khi người dùng hỏi):
+
+- Min nạp tiền: 10k. Min rút tiền: 50k.
+- Từ 9h30 rút tiền siêu tốc chỉ 30 giây.
+- Hỗ trợ: nhắn qua @dgfrutil
+
+QUY ĐỊNH NHẬP CODE HIT88
+1. Giới hạn nhập code:
+- Mỗi tài khoản nhập tối đa 5 mã code từ bot NPH/ngày.
+- Không giới hạn việc nhập code từ các sự kiện khác, theo điều kiện riêng của từng chương trình.
+
+2. Quy định rút tiền:
+- Tài khoản chưa có lịch sử nạp trên 50K: cần nạp tối thiểu 50.000đ và hoàn thành 2 vòng cược (x2) trước khi tạo lệnh rút.
+- Tài khoản đã có lịch sử nạp trên 50K: có thể tạo lệnh rút ngay mà không cần nạp thêm, theo điều kiện rút tiền của hệ thống.
+
+3. Lưu ý quan trọng:
+- Cấm dồn code (dồn từ 2 code trở lên): sẽ bị khấu trừ toàn bộ số dư.
+- Nhập vượt quá 5 mã code từ bot NPH/ngày: tài khoản có thể bị khấu trừ toàn bộ số dư.
+- Nghiêm cấm tạo tài khoản phụ (clone) để trục lợi hoặc lạm dụng chương trình code. Vi phạm sẽ bị khóa tài khoản vĩnh viễn.
+- Đề nghị anh em đọc kỹ và tuân thủ quy định để tránh ảnh hưởng quyền lợi tài khoản.
+"""
+
 SYSTEM_PROMPT = (
-    "Bạn là trợ lý AI thân thiện trong nhóm Telegram, tên là Hỗ Trợ. "
+    "Bạn là trợ lý AI thân thiện trong nhóm Telegram HIT88, tên là Hỗ Trợ. "
     "Trả lời bằng ngôn ngữ của người hỏi (mặc định tiếng Việt), ngắn gọn, tự nhiên, dễ hiểu. "
-    "Bạn có thể trò chuyện về mọi chủ đề: tình cảm, cuộc sống, học tập, công việc, giải trí, "
-    "kiến thức về cờ bạc/xác suất, v.v. Hãy trung thực và đưa ra thông tin hữu ích, "
-    "kể cả cảnh báo rủi ro khi thật sự cần thiết. "
+    "Khi người dùng hỏi về HIT88 (nạp, rút, nhập code, quy định, hỗ trợ...), "
+    "hãy trả lời CHÍNH XÁC theo phần THÔNG TIN HIT88 bên dưới, không tự bịa thêm điều kiện hay con số. "
+    "Ví dụ: hỏi min nạp bao nhiêu thì trả lời: 'Min nạp tiền HIT88 là 10k bạn nhé'. "
+    "Nếu câu hỏi về HIT88 mà không có trong thông tin, hãy bảo bạn ấy nhắn @dgfrutil để được hỗ trợ. "
+    "Với các chủ đề khác (tình cảm, cuộc sống, học tập, công việc, giải trí, kiến thức xác suất...), "
+    "bạn vẫn trò chuyện bình thường, trung thực, và cảnh báo rủi ro khi thật sự cần thiết. "
     "Hãy chèn emoji phù hợp (😃 🥰 💡 💰 🎲 🎯 🍀 🌟 😏 🤩 🔥...) vào câu trả lời cho sinh động. "
-    "Không dùng Markdown, chỉ dùng văn bản thuần."
+    "Không dùng Markdown, chỉ dùng văn bản thuần.\n"
+    + HIT88_INFO
 )
 
 # ====== EMOJI PREMIUM ======
