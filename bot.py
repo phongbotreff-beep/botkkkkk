@@ -5,7 +5,8 @@ import os
 import random
 import re
 
-from anthropic import AsyncAnthropic
+from google import genai
+from google.genai import types
 from telegram import Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.error import BadRequest
@@ -16,8 +17,8 @@ log = logging.getLogger("hotro-bot")
 
 # ====== CẤU HÌNH (đặt bằng biến môi trường, KHÔNG ghi token vào code) ======
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 TRIGGER = os.getenv("TRIGGER", "@hotrohit88bot")
 
 SYSTEM_PROMPT = (
@@ -149,7 +150,7 @@ def premiumize(text: str) -> str:
 
 
 # ====== TIỆN ÍCH ======
-client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 trigger_re = re.compile(re.escape(TRIGGER), re.IGNORECASE)
 
 
@@ -207,13 +208,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(msg.chat_id, ChatAction.TYPING)
 
     try:
-        resp = await client.messages.create(
+        resp = await client.aio.models.generate_content(
             model=MODEL,
-            max_tokens=1500,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                max_output_tokens=1500,
+            ),
         )
-        answer = "".join(b.text for b in resp.content if b.type == "text").strip()
+        answer = (resp.text or "").strip()
         if not answer:
             answer = "Mình chưa có câu trả lời cho câu này, bạn thử hỏi lại nhé. 😕"
     except Exception:
