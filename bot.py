@@ -150,7 +150,14 @@ def premiumize(text: str) -> str:
 
 
 # ====== TIỆN ÍCH ======
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Key AI Studio bắt đầu bằng "AIza...". Key Vertex AI (Express Mode) bắt đầu bằng "AQ."
+# và phải khởi tạo client với vertexai=True.
+if GEMINI_API_KEY.startswith("AQ."):
+    client = genai.Client(vertexai=True, api_key=GEMINI_API_KEY)
+    log.info("Dùng Vertex AI (Express Mode) key")
+else:
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    log.info("Dùng Gemini API (AI Studio) key")
 trigger_re = re.compile(re.escape(TRIGGER), re.IGNORECASE)
 
 
