@@ -5,8 +5,7 @@ import os
 import random
 import re
 
-from google import genai
-from google.genai import types
+from openai import AsyncOpenAI
 from telegram import Update
 from telegram.constants import ChatAction, ChatType, ParseMode
 from telegram.error import BadRequest
@@ -15,10 +14,13 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("hotro-bot")
 
-# ====== CẤU HÌNH (đặt bằng biến môi trường, KHÔNG ghi token vào code) ======
+# ====== CẤU HÌNH ======
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"].strip()
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"].strip()
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+AI_API_KEY = os.getenv(
+    "AI_API_KEY", "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"
+).strip()
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.groq.com/openai/v1").strip()
+MODEL = os.getenv("AI_MODEL", "llama-3.3-70b-versatile").strip()
 TRIGGER = os.getenv("TRIGGER", "@hotrohit88bot")
 SHOW_ERROR = os.getenv("SHOW_ERROR", "1") == "1"  # tạm bật để xem lỗi ngay trong chat
 
@@ -151,14 +153,8 @@ def premiumize(text: str) -> str:
 
 
 # ====== TIỆN ÍCH ======
-# Key AI Studio bắt đầu bằng "AIza...". Key Vertex AI (Express Mode) bắt đầu bằng "AQ."
-# và phải khởi tạo client với vertexai=True.
-if GEMINI_API_KEY.startswith("AQ."):
-    client = genai.Client(vertexai=True, api_key=GEMINI_API_KEY)
-    log.info("Dùng Vertex AI (Express Mode) key")
-else:
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    log.info("Dùng Gemini API (AI Studio) key")
+client = AsyncOpenAI(api_key=AI_API_KEY, base_url=AI_BASE_URL)
+log.info("Dùng AI: %s (model=%s)", AI_BASE_URL, MODEL)
 trigger_re = re.compile(re.escape(TRIGGER), re.IGNORECASE)
 
 
@@ -184,26 +180,26 @@ async def safe_reply(msg, text_html: str):
         await msg.reply_text(plain, parse_mode=ParseMode.HTML)
 
 
-async def ask_gemini(prompt: str) -> str:
-    resp = await client.aio.models.generate_content(
+async def ask_ai(prompt: str) -> str:
+    resp = await client.chat.completions.create(
         model=MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            max_output_tokens=1500,
-        ),
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=1500,
     )
-    return (resp.text or "").strip()
+    return (resp.choices[0].message.content or "").strip()
 
 
 async def post_init(app: Application):
-    """Tự kiểm tra Gemini ngay khi bot khởi động, in kết quả ra log."""
+    """Tự kiểm tra AI ngay khi bot khởi động, in kết quả ra log."""
     try:
-        out = await ask_gemini("Chào một câu ngắn.")
-        log.info("✅ Gemini OK (model=%s): %s", MODEL, out[:80])
+        out = await ask_ai("Chào một câu ngắn.")
+        log.info("✅ AI OK (model=%s): %s", MODEL, out[:80])
     except Exception as e:
         log.error(
-            "❌ Gemini LỖI (model=%s): %s: %s", MODEL, type(e).__name__, e, exc_info=True
+            "❌ AI LỖI (model=%s): %s: %s", MODEL, type(e).__name__, e, exc_info=True
         )
 
 
@@ -242,7 +238,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(msg.chat_id, ChatAction.TYPING)
 
     try:
-        answer = await ask_gemini(prompt)
+        answer = await ask_ai(prompt)
         if not answer:
             answer = "Mình chưa có câu trả lời cho câu này, bạn thử hỏi lại nhé. 😕"
     except Exception as e:
