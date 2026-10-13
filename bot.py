@@ -8,7 +8,7 @@ import re
 from google import genai
 from google.genai import types
 from telegram import Update
-from telegram.constants import ChatAction, ParseMode
+from telegram.constants import ChatAction, ChatType, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -16,9 +16,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("hotro-bot")
 
 # ====== CẤU HÌNH (đặt bằng biến môi trường, KHÔNG ghi token vào code) ======
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"].strip()
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"].strip()
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 TRIGGER = os.getenv("TRIGGER", "@hotrohit88bot")
 
 SYSTEM_PROMPT = (
@@ -176,6 +176,29 @@ async def safe_reply(msg, text_html: str):
         await msg.reply_text(plain, parse_mode=ParseMode.HTML)
 
 
+async def ask_gemini(prompt: str) -> str:
+    resp = await client.aio.models.generate_content(
+        model=MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            max_output_tokens=1500,
+        ),
+    )
+    return (resp.text or "").strip()
+
+
+async def post_init(app: Application):
+    """Tự kiểm tra Gemini ngay khi bot khởi động, in kết quả ra log."""
+    try:
+        out = await ask_gemini("Chào một câu ngắn.")
+        log.info("✅ Gemini OK (model=%s): %s", MODEL, out[:80])
+    except Exception as e:
+        log.error(
+            "❌ Gemini LỖI (model=%s): %s: %s", MODEL, type(e).__name__, e, exc_info=True
+        )
+
+
 # ====== XỬ LÝ TIN NHẮN ======
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
@@ -183,7 +206,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg or not msg.text or not user:
         return
 
-    if not trigger_re.search(msg.text):
+    # Chat riêng (private): trả lời mọi tin nhắn, không cần tag.
+    # Nhóm/supergroup: chỉ trả lời khi có tag bot.
+    is_private = update.effective_chat.type == ChatType.PRIVATE
+    if not is_private and not trigger_re.search(msg.text):
         return
 
     question = trigger_re.sub("", msg.text).strip()
@@ -208,19 +234,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(msg.chat_id, ChatAction.TYPING)
 
     try:
-        resp = await client.aio.models.generate_content(
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=1500,
-            ),
-        )
-        answer = (resp.text or "").strip()
+        answer = await ask_gemini(prompt)
         if not answer:
             answer = "Mình chưa có câu trả lời cho câu này, bạn thử hỏi lại nhé. 😕"
-    except Exception:
-        log.exception("Lỗi khi gọi AI")
+    except Exception as e:
+        log.error("Lỗi khi gọi AI: %s: %s", type(e).__name__, e, exc_info=True)
         answer = "Xin lỗi, hiện mình đang gặp lỗi. Bạn thử lại sau nhé. 😭"
 
     mention = f'<a href="tg://user?id={user.id}">{html.escape(user.full_name)}</a>'
@@ -235,7 +253,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     log.info("Bot đang chạy, từ khoá: %s", TRIGGER)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
