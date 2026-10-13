@@ -192,8 +192,39 @@ async def ask_ai(prompt: str) -> str:
     return (resp.choices[0].message.content or "").strip()
 
 
+PREFERRED_MODELS = [
+    "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "llama-3.1-8b-instant",
+]
+SKIP_WORDS = ("whisper", "tts", "guard", "orpheus", "embed", "safeguard")
+
+
+async def pick_model():
+    """Lấy danh sách model key này dùng được; nếu MODEL hiện tại không có thì tự chọn model khác."""
+    global MODEL
+    try:
+        page = await client.models.list()
+        ids = [m.id for m in page.data]
+        log.info("Model khả dụng: %s", ", ".join(ids))
+        if MODEL in ids:
+            return
+        chosen = next((m for m in PREFERRED_MODELS if m in ids), None)
+        if not chosen:
+            chosen = next(
+                (m for m in ids if not any(w in m.lower() for w in SKIP_WORDS)), None
+            )
+        if chosen:
+            log.warning("Model %s không dùng được, chuyển sang %s", MODEL, chosen)
+            MODEL = chosen
+    except Exception as e:
+        log.error("Không lấy được danh sách model: %s: %s", type(e).__name__, e)
+
+
 async def post_init(app: Application):
     """Tự kiểm tra AI ngay khi bot khởi động, in kết quả ra log."""
+    await pick_model()
     try:
         out = await ask_ai("Chào một câu ngắn.")
         log.info("✅ AI OK (model=%s): %s", MODEL, out[:80])
