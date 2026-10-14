@@ -7,7 +7,7 @@ import random
 import re
 import time
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, NotFoundError
 from telegram import Update
 from telegram.constants import ChatAction, ChatType, ParseMode
 from telegram.error import BadRequest
@@ -27,9 +27,13 @@ if not AI_API_KEY:
 AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.groq.com/openai/v1").strip()
 MODEL = os.getenv("AI_MODEL", "llama-3.3-70b-versatile").strip()
 # Model đọc được ảnh (chỉ dùng khi người dùng gửi ảnh)
-VISION_MODEL = os.getenv(
-    "VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
-).strip()
+VISION_MODEL = os.getenv("VISION_MODEL", "qwen/qwen3.8-27b").strip()
+# Nếu model trên không dùng được (404), bot tự thử lần lượt các model này
+VISION_FALLBACKS = [
+    "qwen/qwen3.8-27b",
+    "qwen/qwen3.6-27b",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+]
 TRIGGER = os.getenv("TRIGGER", "@hotrohit88bot")
 SHOW_ERROR = os.getenv("SHOW_ERROR", "1") == "1"  # tạm bật để xem lỗi ngay trong chat
 
@@ -325,15 +329,14 @@ async def ask_ai(prompt: str) -> str:
     return (resp.choices[0].message.content or "").strip()
 
 
-async def ask_ai_vision(problem: str, image_b64: str, mime: str) -> str:
-    """Gửi ảnh + mô tả vấn đề cho model đọc ảnh."""
+async def _vision_call(model: str, problem: str, image_b64: str, mime: str) -> str:
     text = (
         f"Vấn đề người dùng gặp phải: {problem}\n\n"
         "Hãy xem kỹ ảnh đính kèm, nói ngắn gọn ảnh cho thấy gì, "
         "rồi hướng dẫn cách giải quyết vấn đề."
     )
     resp = await client.chat.completions.create(
-        model=VISION_MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT + VISION_RULES},
             {
@@ -347,9 +350,30 @@ async def ask_ai_vision(problem: str, image_b64: str, mime: str) -> str:
                 ],
             },
         ],
-        max_tokens=1500,
+        max_tokens=3000,
     )
-    return (resp.choices[0].message.content or "").strip()
+    out = resp.choices[0].message.content or ""
+    # Một số model có suy luận: bỏ phần <think>...</think> nếu có
+    out = re.sub(r"<think>.*?</think>", "", out, flags=re.S)
+    return out.strip()
+
+
+async def ask_ai_vision(problem: str, image_b64: str, mime: str) -> str:
+    """Gửi ảnh + mô tả vấn đề cho model đọc ảnh; model nào 404 thì thử model kế tiếp."""
+    global VISION_MODEL
+    candidates = [VISION_MODEL] + [m for m in VISION_FALLBACKS if m != VISION_MODEL]
+    last_err: Exception | None = None
+    for model in candidates:
+        try:
+            out = await _vision_call(model, problem, image_b64, mime)
+            if model != VISION_MODEL:
+                log.warning("Model ảnh %s lỗi, chuyển sang %s", VISION_MODEL, model)
+                VISION_MODEL = model
+            return out
+        except NotFoundError as e:
+            log.warning("Model ảnh %s không dùng được: %s", model, e)
+            last_err = e
+    raise last_err or RuntimeError("Không có model đọc ảnh nào dùng được")
 
 
 PREFERRED_MODELS = [
@@ -359,7 +383,7 @@ PREFERRED_MODELS = [
     "llama-3.1-8b-instant",
 ]
 SKIP_WORDS = ("whisper", "tts", "guard", "orpheus", "embed", "safeguard")
-VISION_HINTS = ("llama-4", "scout", "maverick", "vision")
+VISION_HINTS = ("qwen3.8", "qwen3.6", "qwen3-vl", "llama-4", "scout", "maverick", "vision")
 
 
 async def pick_model():
@@ -385,9 +409,9 @@ async def pick_model():
             vchosen = next(
                 (
                     m
+                    for h in VISION_HINTS
                     for m in ids
-                    if any(h in m.lower() for h in VISION_HINTS)
-                    and not any(w in m.lower() for w in SKIP_WORDS)
+                    if h in m.lower() and not any(w in m.lower() for w in SKIP_WORDS)
                 ),
                 None,
             )
@@ -561,3 +585,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
